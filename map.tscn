@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://bsvwudvelhuwp"]
+
+[ext_resource type="Script" uid="uid://bph54aawfadaa" path="res://scripts/map.gd" id="1_c7s6e"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_e6lj2"]
+size = Vector2(4, 4)
+
+[node name="Map" type="Node3D"]
+script = ExtResource("1_c7s6e")
+
+[node name="MapPlane" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_e6lj2")
