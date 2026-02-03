@@ -2,7 +2,7 @@ extends Node3D
 var thread: Thread
 
 
-var tiles_api = TilesApi.new()
+var tiles_api = TilesApi.new(4000)
 var layers = tiles_api.layers.keys()
 var layer_i = 0
 var layer = layers[layer_i]
@@ -12,15 +12,28 @@ var map_move_step = 3
 var level = 16
 var coords = tiles_api.gps_to_grid(45.1140770, 6.5637753, level)
 
+var loading_symbol: MeshInstance3D
+
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
 	$MapPlane.material_override = material
+	loading_symbol = $LoadingSymbol
 
 func _process(_delta: float) -> void:
+	if loading_symbol != null and thread != null:
+		if thread.is_alive():
+			loading_symbol.show()
+		else:
+			loading_symbol.hide()
+
 	if Input.is_action_just_pressed(&"map"): 
 		get_map()
 	if Input.is_action_just_pressed(&"next_map"): 
 		layer_i = (layer_i+1)%layers.size()
+		layer = layers[layer_i]
+		get_map()
+	if Input.is_action_just_pressed(&"prev_map"): 
+		layer_i = (layer_i-1)%layers.size()
 		layer = layers[layer_i]
 		get_map()
 	if Input.is_action_just_pressed(&"map_left"): 
@@ -38,9 +51,22 @@ func _process(_delta: float) -> void:
 
 func update_texture(image: Image) -> void:
 	material.albedo_texture = ImageTexture.create_from_image(image)
-	
+
 func get_map() -> void:
-	var f = func(): tiles_api.layers[layer].get_zone(coords.x-4, coords.y-4, 8, 8, level, update_texture)
+	if thread != null and thread.is_started() and thread.is_alive():
+		print("Map has not finished loading, wait")
+		return
+	elif thread != null and thread.is_started() and not thread.is_alive():
+		thread.wait_to_finish()
+	print("GETTING MAP")
+	var f: Callable
+	$LoadingSymbol.show()
+	if not tiles_api.layers[layer].is_connected_to_host():
+		f = func(): tiles_api.layers[layer].connect_to_host(); tiles_api.layers[layer].get_zone(coords.x-4, coords.y-4, 8, 8, level, update_texture)
+	else:
+		f = func(): tiles_api.layers[layer].get_zone(coords.x-4, coords.y-4, 8, 8, level, update_texture)
 	thread = Thread.new()
 	thread.start(f)
-	
+
+func _exit_tree():
+	thread.wait_to_finish()
