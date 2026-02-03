@@ -9,3 +9,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if get_input(&"select_button"):
 		Input.action_press("map")
+
+# TODO: Use any of
+# - Julian Todd's: XR Hand Pose Detector
+# - Malcolm Nixons: XR Hand Pose Detector

@@ -2,7 +2,7 @@ extends Node3D
 var thread: Thread
 
 
-var tiles_api = TilesApi.new(4000)
+var tiles_api = TilesApi.new(3000)
 var layers = tiles_api.layers.keys()
 var layer_i = 0
 var layer = layers[layer_i]
@@ -20,11 +20,10 @@ func _ready() -> void:
 	loading_symbol = $LoadingSymbol
 
 func _process(_delta: float) -> void:
-	if loading_symbol != null and thread != null:
-		if thread.is_alive():
-			loading_symbol.show()
-		else:
-			loading_symbol.hide()
+	if thread != null and thread.is_started() and not thread.is_alive():
+		var img = thread.wait_to_finish()
+		material.albedo_texture = ImageTexture.create_from_image(img)
+		loading_symbol.hide()
 
 	if Input.is_action_just_pressed(&"map"): 
 		get_map()
@@ -54,17 +53,15 @@ func update_texture(image: Image) -> void:
 
 func get_map() -> void:
 	if thread != null and thread.is_started() and thread.is_alive():
-		print("Map has not finished loading, wait")
 		return
-	elif thread != null and thread.is_started() and not thread.is_alive():
-		thread.wait_to_finish()
-	print("GETTING MAP")
 	var f: Callable
 	$LoadingSymbol.show()
 	if not tiles_api.layers[layer].is_connected_to_host():
-		f = func(): tiles_api.layers[layer].connect_to_host(); tiles_api.layers[layer].get_zone(coords.x-4, coords.y-4, 8, 8, level, update_texture)
+		#f = func(): tiles_api.layers[layer].connect_to_host(); return tiles_api.layers[layer].get_square_zone(Vector2i(coords.x-4, coords.y-4), Vector2i(8, 8), level, update_texture)
+		f = func(): tiles_api.layers[layer].connect_to_host(); return tiles_api.layers[layer].get_circle_zone(Vector2i(coords.x, coords.y), 6, level, update_texture)
 	else:
-		f = func(): tiles_api.layers[layer].get_zone(coords.x-4, coords.y-4, 8, 8, level, update_texture)
+		#f = func(): return tiles_api.layers[layer].get_square_zone(Vector2i(coords.x-4, coords.y-4), Vector2i(8, 8), level, update_texture)
+		f = func(): return tiles_api.layers[layer].get_circle_zone(Vector2i(coords.x, coords.y), 6, level, update_texture)
 	thread = Thread.new()
 	thread.start(f)
 

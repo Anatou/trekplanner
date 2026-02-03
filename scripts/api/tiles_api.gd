@@ -6,9 +6,9 @@ var layers: Dictionary[String,TileApi]
 func _init(timeout: int = 5000) -> void:
 	_timeout = timeout
 	layers = {
+		"cyclosm": CyclosmTileApi.new(_timeout),
 		"osm": OsmTileApi.new(_timeout),
 		"topo": TopoTileApi.new(_timeout),
-		"cyclosm": CyclosmTileApi.new(_timeout),
 	}
 
 ## Convert XYZ Web Mercator coordinates to GPS
@@ -37,7 +37,7 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 	var _is_connected_to_host: bool = false ## Object starts disconnected to ease startup time, use [code]connect_to_host()[/code] to connect
 	var http_workers: HttpWorkerPool ## HTTP workers manager
 
-	#region ABSTRACT FUNCTIONS	
+	#region ABSTRACT MEHTODS	
 	@abstract func name() -> String ## Returns API name for display
 	@abstract func description() -> String ## Returns API description for display
 
@@ -52,18 +52,13 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 	## Returns the tile size (which is both height and width as tiles are squares)
 	@abstract func _get_size() -> int
 
-	## Transforms the response body in the correct image format
-	@abstract func _body_to_img(body: PackedByteArray) -> Image
+	## Transforms the response body in the correct image format, returns the error code
+	@abstract func _body_to_img(image: Image, body: PackedByteArray) -> int
 	#endregion
-
+	#region PRIVATE MEHTODS
 	func _init(timeout: int = 5000, max_workers: int = 16) -> void:
 		_timeout = timeout
 		_max_workers = max_workers
-	func connect_to_host() -> void:
-		http_workers = HttpWorkerPool.new(self._get_host(), _timeout, _max_workers)
-		_is_connected_to_host = true
-	func is_connected_to_host() -> bool: 
-		return _is_connected_to_host
 	func _make_headers(w:int) -> Array[String]:
 		return [
 			"Host: %s" % http_workers.get_worker_host(w),
@@ -76,6 +71,65 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 		var image = Image.create_empty(self._get_size(), self._get_size(), false, Image.FORMAT_RGB8)
 		image.fill(Color.ORANGE)
 		return image
+	func _get_tile_batch(coords_queue: Array[Vector2i], pos: Vector2i, out_image: Image, level: int, callback: Callable, update_count: int = 15) -> Image:
+		var start_time = Time.get_ticks_msec()
+		var worker_coords: Dictionary[int, Vector2i] = {}
+		var finished_workers: Array[int] = []
+		var count = 0
+		var img_count = coords_queue.size()
+		# Get the tiles
+		while count < img_count:
+			if Time.get_ticks_msec()-start_time > _timeout:
+				push_warning("get_square_zone: TIMEOUT")
+				break
+			# Start requests
+			if not coords_queue.is_empty():
+				var available_worker_count = http_workers.get_available_worker_count()
+				for _w in min(available_worker_count, coords_queue.size()):
+					var worker = http_workers.get_available_worker()
+					worker_coords[worker.id] = coords_queue.pop_front()
+					var request = self._get_request(worker_coords[worker.id].x+pos.x, worker_coords[worker.id].y+pos.y, level)
+					var headers = self._make_headers(worker.id)
+					worker.w.request(worker.w.METHOD_GET, request, headers)
+			# Poll requests
+			while http_workers.get_busy_worker_count() > 0 and finished_workers.size() == 0:
+				finished_workers = http_workers.poll()
+				if Time.get_ticks_msec()-start_time > _timeout:
+					push_warning("get_square_zone: TIMEOUT (from polling loop)")
+					break
+			# Treat finished workers
+			for w in finished_workers:
+				var body = http_workers.get_response_body(w)
+				var res: Image
+				var err = -1
+				if not body.is_empty(): 
+					res = Image.new()
+					err = self._body_to_img(res, body)
+				if err != OK: 
+					# Request failed and is started again
+					# Place a red temporary tile to notify user
+					res = self._get_error_tile()
+					var request = self._get_request(worker_coords[w].x+pos.x, worker_coords[w].y+pos.y, level)
+					var worker = http_workers.get_worker(w)
+					var headers = self._make_headers(worker.id)
+					worker.w.request(worker.w.METHOD_GET, request, headers)
+				var rect = Rect2i(0, 0, self._get_size(), self._get_size())
+				var coords = worker_coords[w]
+				out_image.blit_rect(res, rect, coords*self._get_size())
+				count += 1
+				if count % update_count == 0:
+					callback.call_deferred(out_image)
+			finished_workers = []
+		http_workers.reset_busy_workers()
+		return out_image
+	#endregion
+	#region PUBLIC METHODS
+	func connect_to_host() -> void:
+		if not _is_connected_to_host:
+			http_workers = HttpWorkerPool.new(self._get_host(), _timeout, _max_workers)
+			_is_connected_to_host = true
+	func is_connected_to_host() -> bool: 
+		return _is_connected_to_host
 	func get_tile(x: int, y: int, level: int) -> Image:
 		var start_time = Time.get_ticks_msec()
 		var worker: HttpWorker = http_workers.get_available_worker()
@@ -86,65 +140,41 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 			if Time.get_ticks_msec()-start_time > _timeout:
 				return self._get_error_tile()
 		var body = http_workers.get_response_body(worker.id)
-		return self._body_to_img(body)
-	func get_zone(start_x: int, start_y: int, width: int, height: int, level: int, callback: Callable = func(_img: Image): pass) -> Image:
-		assert(http_workers.get_busy_worker_count() == 0, "No worker should be busy when starting get_zone")
-		var start_time = Time.get_ticks_msec()
-		var image = Image.create_empty(width*self._get_size(), height*self._get_size(), false, Image.FORMAT_RGB8)
-		var img_count = 0
-		var worker_coords: Dictionary[int, Vector2i] = {}
-		var finished_workers: Array[int] = []
+		var image = Image.new()
+		var err = self._body_to_img(image, body)
+		if err != OK:
+			image = self._get_error_tile()
+		return image
+	func get_square_zone(pos: Vector2i, size: Vector2i, level: int, callback: Callable = func(_img: Image): pass, update_count: int = 15) -> Image:
+		assert(http_workers.get_busy_worker_count() == 0, "No worker should be busy when starting get_square_zone")
+		var out_image = Image.create_empty(size.x*self._get_size(), size.y*self._get_size(), false, Image.FORMAT_RGB8)
 		var coords_queue: Array[Vector2i] = []
 
 		# Make the coordinate queue and sort it by distance to center
 		var center = Vector2i(0,0)
-		for x in width: 
-			for y in height: 
+		for x in size.x: 
+			for y in size.y: 
 				coords_queue.append(Vector2i(x, y))
 				center += coords_queue[-1]
 		center /= coords_queue.size()
 		coords_queue.sort_custom(func(v1:Vector2i, v2:Vector2i): return v1.distance_to(center)<v2.distance_to(center))
 		
-		# Get the tiles
-		while img_count < width*height:
-			if Time.get_ticks_msec()-start_time > _timeout:
-				push_warning("get_zone: TIMEOUT")
-				break
-			# Start requests
-			if not coords_queue.is_empty():
-				var available_worker_count = http_workers.get_available_worker_count()
-				for _w in min(available_worker_count, coords_queue.size()):
-					var worker = http_workers.get_available_worker()
-					worker_coords[worker.id] = coords_queue.pop_front()
-					var request = self._get_request(worker_coords[worker.id].x+start_x, worker_coords[worker.id].y+start_y, level)
-					var headers = self._make_headers(worker.id)
-					worker.w.request(worker.w.METHOD_GET, request, headers)
-			# Poll requests
-			while http_workers.get_busy_worker_count() > 0 and finished_workers.size() == 0:
-				finished_workers = http_workers.poll()
-				if Time.get_ticks_msec()-start_time > _timeout:
-					push_warning("get_zone: TIMEOUT (from polling loop)")
-					break
-			# Treat finished workers
-			for w in finished_workers:
-				var body = http_workers.get_response_body(w)
-				var res: Image
-				if not body.is_empty(): res = self._body_to_img(body)
-				else: 
-					# Request failed and is started again
-					res = self._get_error_tile()
-					var request = self._get_request(worker_coords[w].x+start_x, worker_coords[w].y+start_y, level)
-					var worker = http_workers.get_worker(w)
-					var headers = self._make_headers(worker.id)
-					worker.w.request(worker.w.METHOD_GET, request, headers)
-				var rect = Rect2i(0, 0, self._get_size(), self._get_size())
-				var coords = worker_coords[w]
-				image.blit_rect(res, rect, coords*self._get_size())
-				callback.call_deferred(image)
-				img_count += 1
-			finished_workers = []
-		http_workers.reset_busy_workers()
-		return image
+		return _get_tile_batch(coords_queue, pos, out_image, level, callback, update_count)
+	func get_circle_zone(center: Vector2i, radius: int, level: int, callback: Callable = func(_img: Image): pass, update_count: int = 15) -> Image:
+		assert(http_workers.get_busy_worker_count() == 0, "No worker should be busy when starting get_square_zone")
+		var out_image = Image.create_empty(radius*2*self._get_size(), radius*2*self._get_size(), false, Image.FORMAT_RGB8)
+		var coords_queue: Array[Vector2i] = []
+
+		# Make the coordinate queue and sort it by distance to center
+		var sort_center = Vector2i(radius, radius)
+		for x in radius*2: 
+			for y in radius*2: 
+				if ((x-radius)**2+(y-radius)**2 < radius**2):
+					coords_queue.append(Vector2i(x, y))
+		coords_queue.sort_custom(func(v1:Vector2i, v2:Vector2i): return v1.distance_to(sort_center)<v2.distance_to(sort_center))
+		
+		return _get_tile_batch(coords_queue, center-sort_center, out_image, level, callback, update_count)
+	#endregion
 
 #region TILE API IMPLEMENTATIONS
 class CyclosmTileApi extends TileApi:
@@ -158,11 +188,8 @@ class CyclosmTileApi extends TileApi:
 	func _get_host() -> Array[String]: return hosts
 	func _get_size() -> int:           return 256
 	func _get_request(x: int, y: int, level: int) -> String: return "/cyclosm/%d/%d/%d.png" % [level, x, y]
-	func _body_to_img(body: PackedByteArray) -> Image: 
-		var image = Image.new()
-		var err = image.load_png_from_buffer(body)
-		assert(err==OK, "OsmTileApi: Image convertion failed")
-		return image
+	func _body_to_img(image: Image, body: PackedByteArray) -> int: 
+		return image.load_png_from_buffer(body)
 class TopoTileApi extends TileApi:
 	var domain_rr = 0
 	var hosts: Array[String] = [
@@ -175,20 +202,14 @@ class TopoTileApi extends TileApi:
 	func _get_host() -> Array[String]: return hosts
 	func _get_size() -> int:           return 256
 	func _get_request(x: int, y: int, level: int) -> String: return "/%d/%d/%d.png" % [level, x, y]
-	func _body_to_img(body: PackedByteArray) -> Image: 
-		var image = Image.new()
-		var err = image.load_png_from_buffer(body)
-		assert(err==OK, "TopoTileApi: Image convertion failed")
-		return image
+	func _body_to_img(image: Image, body: PackedByteArray) -> int: 
+		return image.load_png_from_buffer(body)
 class OsmTileApi extends TileApi:
 	func name() -> String:             return "OpenStreetMap"
 	func description() -> String:      return "Free API: Standard OpenStreetMap Tiles, mainly useful in cities."
 	func _get_host() -> Array[String]: return ["tile.openstreetmap.org"]
 	func _get_size() -> int:           return 256
 	func _get_request(x: int, y: int, level: int) -> String: return "/%d/%d/%d.png" % [level, x, y]
-	func _body_to_img(body: PackedByteArray) -> Image: 
-		var image = Image.new()
-		var err = image.load_png_from_buffer(body)
-		assert(err==OK, "OsmTileApi: Image convertion failed")
-		return image
+	func _body_to_img(image: Image, body: PackedByteArray) -> int: 
+		return image.load_png_from_buffer(body)
 #endregion
