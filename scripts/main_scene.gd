@@ -2,6 +2,12 @@ extends Node3D
 
 var xr_interface: XRInterface
 
+func _enter_tree() -> void:
+	DirAccess.remove_absolute(Cache.TMP_CACHE_PATH)
+
+func _exit_tree() -> void:
+	DirAccess.remove_absolute(Cache.TMP_CACHE_PATH)
+
 func _ready():
 	xr_interface = XRServer.find_interface("OpenXR")
 	if xr_interface and xr_interface.is_initialized():

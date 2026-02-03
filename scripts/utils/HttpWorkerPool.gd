@@ -144,6 +144,10 @@ func poll_one(w: int) -> bool:
 func get_available_worker_count() -> int:
 	return _max_workers - _busy_workers.size()
 
+## Returns true if there is any available worker
+func is_any_worker_available() -> bool:
+	return not _available_workers.is_empty()
+
 ## Returns the count of busy workers
 func get_busy_worker_count() -> int:
 	return _busy_workers.size()
