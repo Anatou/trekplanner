@@ -54,6 +54,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	var velocity = _walk(delta)
+	if Input.is_action_pressed(&"move_up"): velocity += Vector3(0,speed,0)
+	if Input.is_action_pressed(&"move_down"): velocity += Vector3(0,-speed,0)
 	self.position += velocity
 
 func capture_mouse() -> void:

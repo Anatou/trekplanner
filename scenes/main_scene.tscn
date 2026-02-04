@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3 uid="uid://cp0ro2fmc312m"]
+[gd_scene load_steps=19 format=3 uid="uid://cp0ro2fmc312m"]
 
 [ext_resource type="Script" uid="uid://bkahyboqawwsh" path="res://scripts/main_scene.gd" id="1_0f027"]
 [ext_resource type="Script" uid="uid://b2ka5acv0fq2u" path="res://scripts/player.gd" id="2_2c62f"]
@@ -6,9 +6,9 @@
 [ext_resource type="PackedScene" uid="uid://b4kad2kuba1yn" path="res://addons/godot-xr-tools/hands/scenes/lowpoly/left_hand_low.tscn" id="2_66tet"]
 [ext_resource type="PackedScene" uid="uid://l2n30mpbkdyw" path="res://addons/godot-xr-tools/hands/scenes/lowpoly/right_hand_low.tscn" id="3_7ycvg"]
 [ext_resource type="Texture2D" uid="uid://bvfg1vqjytpwo" path="res://addons/kenney_prototype_textures/green/texture_08.png" id="3_8mm7a"]
-[ext_resource type="Texture2D" uid="uid://nuyqlg1bkt2" path="res://addons/kenney_prototype_textures/purple/texture_05.png" id="3_d5x1h"]
 [ext_resource type="Texture2D" uid="uid://r0n8rw800n76" path="res://addons/kenney_prototype_textures/red/texture_05.png" id="4_d5x1h"]
 [ext_resource type="PackedScene" uid="uid://bsvwudvelhuwp" path="res://scenes/map.tscn" id="6_hq1ik"]
+[ext_resource type="Script" uid="uid://ctd2un45chwe1" path="res://scripts/MapPlane.gd" id="10_6wevv"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_2c62f"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -33,11 +33,6 @@ albedo_texture = ExtResource("3_8mm7a")
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_0f027"]
 material = SubResource("StandardMaterial3D_0f027")
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hq1ik"]
-albedo_texture = ExtResource("3_d5x1h")
-
-[sub_resource type="PrismMesh" id="PrismMesh_2c62f"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8mm7a"]
 albedo_texture = ExtResource("4_d5x1h")
@@ -94,11 +89,6 @@ mesh = SubResource("SphereMesh_2c62f")
 transform = Transform3D(18.868925, 0, 0, 0, 1, 0, 0, 0, 16.608318, 0, 0, 0)
 mesh = SubResource("PlaneMesh_0f027")
 
-[node name="TestPrism" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -5)
-material_override = SubResource("StandardMaterial3D_hq1ik")
-mesh = SubResource("PrismMesh_2c62f")
-
 [node name="TestCube" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 4)
 material_override = SubResource("StandardMaterial3D_8mm7a")
@@ -106,3 +96,7 @@ mesh = SubResource("BoxMesh_2c62f")
 
 [node name="Map" parent="." instance=ExtResource("6_hq1ik")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.2663178, 0.9892441, 0)
+
+[node name="MapPlane" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.508, -5)
+script = ExtResource("10_6wevv")
