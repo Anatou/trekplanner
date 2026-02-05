@@ -37,9 +37,11 @@ func _arrange_points_clockwise(verts: PackedVector3Array, points: Array[int]) ->
 		return [points[0], points[1], points[2]]
 	return [points[0], points[2], points[1]]
 
-func _add_neighbor_to_point(d: Dictionary, pt: int, n: int) -> void:
-	if not d.has(pt): d.set(pt, [])
-	d[pt].append(n)
+func _add_neighbor_to_point(d: Dictionary, pt1: int, pt2: int) -> void:
+	if not d.has(pt1): d.set(pt1, [])
+	if not d.has(pt2): d.set(pt2, [])
+	d[pt1].append(pt2)
+	d[pt2].append(pt1)
 
 func _get_angle_with_center(v: Vector3) -> float:
 	var angle = v.angle_to(Vector3(1, 0, 0))
@@ -77,7 +79,7 @@ func _make_dense_disk_mesh(n: int, radius: float) -> Array:
 		normals.append(Vector3.UP)
 		unindexed_points.append(i)
 	#endregion
-	#region DRAW DISK MESH
+	#region CONNECT DISK MESH
 	var segments: Set = Set.new() ## All segments as pair of points, sorted in ascending order
 	var border_pts: Dictionary = {} ## All the points at the border of the constructed mesh and their connected points
 
@@ -131,54 +133,75 @@ func _make_dense_disk_mesh(n: int, radius: float) -> Array:
 		_push_pair_to_set(segments, min_point2, pt)
 		_add_neighbor_to_point(border_pts, pt, min_point1)
 		_add_neighbor_to_point(border_pts, pt, min_point2)
-	
-	# # Finally, find and connect all the outer vertices to make the outer circle
-	# var outer_points: Array[int] = []
-	# var angle: float = 0
-	# for i in range(verts.size()-1, -1, -1):
-	# 	outer_points.append(i)
-	# 	_draw_gizmo_point(verts[i])
-	# 	var new_angle = _get_angle_with_center(verts[i])
-	# 	# If full circle around
-	# 	if new_angle < angle:
-	# 		break
-	
-	# # for i in outer_points.size()-1:
-	# # 	var pt1_neighbors = border_pts[outer_points[i]]
-	# # 	var pt2_neighbors = border_pts[outer_points[i+1]]
-	# # 	var pt_for_triangle = -1
-	# # 	for pt1_n in pt1_neighbors:
-	# # 		if pt1_n in pt2_neighbors:
-	# # 			pt_for_triangle = pt1_n
-	# # 			assert(pt1_n in border_pts.keys())
-	# # 			break
-	# # 	assert(pt_for_triangle != -1)
-	# # 	indices.append_array(_arrange_points_clockwise(verts, [outer_points[i], outer_points[i+1], pt_for_triangle]))
-	# # 	_push_pair_to_set(segments, outer_points[i], outer_points[i+1])
-	# # 	border_pts.erase(pt_for_triangle) # pt is now enclosed and not part of the border
 	#endregion
-	#region DRAW CIRCLE
-	_draw_gizmo_point(verts[-3]+Vector3(0,0.01,0), 0.01, Color.YELLOW)
-	_draw_gizmo_point(verts[-2]+Vector3(0,0.01,0), 0.01, Color.ORANGE)
-	_draw_gizmo_point(verts[-1]+Vector3(0,0.01,0), 0.01, Color.RED)
-	var point_count: int = max(3, n / (10*round(radius))) # At least 3 points
-	var alpha = 2*PI / point_count
-	var last_disk_point = verts[-1]
-	var start_angle = last_disk_point.angle_to(Vector3(1, 0, 0))
-	var start_sign = -1 if last_disk_point.angle_to(Vector3(0, 0, 1)) > PI/2.0 else 1
-	for i in point_count:
-		var x = radius*cos(alpha*i+start_angle*start_sign)
-		var y = radius*sin(alpha*i+start_angle*start_sign)
-		_draw_gizmo_point(Vector3(x, 0, y))
+	#region FIND OUTER POINTS
+	var outer_points: PackedInt32Array = []
+	var start_pti = verts.size()-1
+	var pti = start_pti
+	var prev_pti = start_pti
+	var found_all_outer_points = false
+	outer_points.append(pti) 
+	# Find outer points using property index_a > index_b -> dist_to_center_a > dist_to_center_b
+	# Get the farthest point from center in the counter-clockwise direction
+	while not found_all_outer_points:
+		var pt_neighbors = border_pts[pti]
+		var max_index = -1
+		for neigh in pt_neighbors:
+			if neigh == start_pti and neigh != prev_pti:
+				found_all_outer_points = true
+				break
+			if neigh > max_index and verts[pti].cross(verts[neigh]).y < 0:
+				max_index = neigh
+		if not found_all_outer_points:
+			prev_pti = pti
+			pti = max_index
+			outer_points.append(pti) 
+	var outer_pts_size = outer_points.size()
+	#endregion
+	#region DRAW CIRCLE POINTS
+	# var point_count: int = max(3, outer_pts_size) # At least 3 points
+	# var alpha = 2*PI / point_count
+	# var last_disk_point = verts[-1]
+	# var start_angle = last_disk_point.angle_to(Vector3(1, 0, 0)) #+ alpha/2.0
+	# var start_sign = -1 if last_disk_point.angle_to(Vector3(0, 0, 1)) > PI/2.0 else 1
+	# var circle_points: PackedInt32Array = []
+	# var verts_size = verts.size()
+	# for i in point_count:
+	# 	var x = radius*cos(alpha*i+start_angle*start_sign)
+	# 	var y = radius*sin(alpha*i+start_angle*start_sign)
+	# 	_draw_gizmo_point(Vector3(x, 0, y), 0.01, Color.from_rgba8(i, i, i))
+	# 	verts.append(Vector3(x, 0, y))
+	# 	circle_points.append(verts_size)
+	# 	verts_size += 1
+	# 	uvs.append(Vector2(_normalize(x, min_x, max_x), _normalize(y, min_y, max_y)))
+	# 	normals.append(Vector3.UP)
+	# 	unindexed_points.append(i)
+	# var circle_pts_size = circle_points.size()
+	var circle_points: PackedInt32Array = []
+	var verts_size = verts.size()
+	for i in outer_pts_size:
+		var pt: Vector3 = verts[outer_points[i]].normalized()
+		var x = pt.x * radius
+		var y = pt.z * radius
 		verts.append(Vector3(x, 0, y))
+		circle_points.append(verts_size)
+		verts_size += 1
 		uvs.append(Vector2(_normalize(x, min_x, max_x), _normalize(y, min_y, max_y)))
 		normals.append(Vector3.UP)
-		unindexed_points.append(i)
+	var circle_pts_size = circle_points.size()
 	#endregion
 	#region CONNECT CIRCLE TO MESH
-	
+	# outer_pts and circle_pts rotate around the disk in the same direction
+	# let's step over those two with two pointers and limit comparisons
+	var outer_pti: int = 0
+	var circle_pti: int = 0
+	while outer_pti<outer_pts_size-1 and circle_pti<circle_pts_size-1:
+		indices.append_array(_arrange_points_clockwise(verts, [outer_points[outer_pti], outer_points[outer_pti+1], circle_points[circle_pti]]))
+		indices.append_array(_arrange_points_clockwise(verts, [outer_points[outer_pti+1], circle_points[circle_pti], circle_points[circle_pti+1]]))
+		outer_pti += 1
+		circle_pti += 1
+	indices.append_array(_arrange_points_clockwise(verts, [outer_points[outer_pti], circle_points[circle_pti], circle_points[0]]))
 	#endregion
-
 	# Assign arrays to surface array.
 	surface[Mesh.ARRAY_VERTEX] = verts
 	surface[Mesh.ARRAY_TEX_UV] = uvs
@@ -197,11 +220,12 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	var n = surface_array[Mesh.ARRAY_VERTEX].size()
-	var height = 0.05
-	var speed = 0.0
-	# var speed = 0.001
-	var wavelength = 10
+	var height = 0.2
+	# var speed = 0.0
+	var speed = 0.001
+	var wavelength = 4
 	for i in n:
-		surface_array[Mesh.ARRAY_VERTEX][i].y = sin(Time.get_ticks_msec()*speed + ((i as float)/(n as float))*wavelength)*(height/2)
+		var d = surface_array[Mesh.ARRAY_VERTEX][i].distance_squared_to(Vector3(0,0,0))
+		surface_array[Mesh.ARRAY_VERTEX][i].y = sin(Time.get_ticks_msec()*speed + d*wavelength)*(height/2)
 	mesh.clear_surfaces()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface_array)
