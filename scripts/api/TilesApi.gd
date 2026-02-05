@@ -18,8 +18,8 @@ func grid_to_gps(x: int, y: int, level: int) -> Vector2:
 	var n = 2**level
 	var a = PI*(1-2*y/(n as float))
 	var lat = 180/PI * atan(sinh(a))
-	var long = 360*x/((n - 180) as float)
-	return Vector2(snapped(lat, .001), snapped(long, .001))
+	var long = 360*x/(n as float)  - 180
+	return Vector2(lat, long)
 ## Convert GPS coordinates to XYZ Web Mercator
 func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 	#https://gis.stackexchange.com/questions/461842/generating-my-own-xyz-tiles-how-do-x-y-z-map-to-gps-bounds
@@ -29,7 +29,7 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 	var lts = log(tan(r) + 1/cos(r))
 	var x = n*(0.5+long/360)
 	var y = n*(1-lts/PI) /2
-	return Vector2i(round(x), round(y))
+	return Vector2i(floor(x), floor(y))
 
 @abstract class TileApi extends Node:
 	var _timeout: int ## Time before request timeout (in ms)
@@ -76,7 +76,7 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 		var image = Image.create_empty(self._get_size(), self._get_size(), false, Image.FORMAT_RGB8)
 		image.fill(Color.ORANGE)
 		return image
-	func _get_tile_batch(coords_queue: Array[Vector2i], pos: Vector2i, out_image: Image, level: int, callback: Callable, update_count: int = 15) -> Image:
+	func _get_tile_batch(coords_queue: Array[Vector2i], pos: Vector2i, out_image: Image, offset: Vector2i, level: int, callback: Callable, update_count: int = 15) -> Image:
 		var start_time = Time.get_ticks_msec()
 		var worker_coords: Dictionary[int, Vector2i] = {}
 		var finished_workers: Array[int] = []
@@ -91,10 +91,11 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 				var err = self._body_to_img(img, body)
 				if err == OK:
 					var rect = Rect2i(0, 0, self._get_size(), self._get_size())
-					out_image.blit_rect(img, rect, coords*self._get_size())
+					out_image.blit_rect(img, rect, coords*self._get_size()-offset)
 					count += 1
 					coords_queue.remove_at(i)
-		callback.call_deferred(out_image)
+		if count != img_count:
+			callback.call_deferred(out_image)
 		# Then request the remaining tiles
 		while count < img_count:
 			if Time.get_ticks_msec()-start_time > _timeout:
@@ -141,7 +142,7 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 					count -= 1 # -1 to nullify the next +1 as nothing happened
 				var rect = Rect2i(0, 0, self._get_size(), self._get_size())
 				var coords = worker_coords[w]
-				out_image.blit_rect(res, rect, coords*self._get_size())
+				out_image.blit_rect(res, rect, coords*self._get_size()-offset)
 				count += 1
 				if count% update_count == 0:
 					callback.call_deferred(out_image)
@@ -178,26 +179,27 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 		else:
 			image = self._get_error_tile()
 		return image
-	func get_square_zone(pos: Vector2i, size: Vector2i, level: int, callback: Callable = func(_img: Image): pass, update_count: int = 15) -> Image:
+	func get_square_zone(pos: Vector2i, size: int, level: int, callback: Callable = func(_img: Image): pass, update_count: int = 15) -> Image:
 		assert(_http_workers.get_busy_worker_count() == 0, "No worker should be busy when starting get_square_zone")
-		var out_image = Image.create_empty(size.x*self._get_size(), size.y*self._get_size(), false, Image.FORMAT_RGB8)
+		size += 2 # To have some spare room on the edges when offseting to real gps coords
+		var out_image = Image.create_empty(size*self._get_size(), size*self._get_size(), false, Image.FORMAT_RGB8)
 		var coords_queue: Array[Vector2i] = []
-
+		var offset = Vector2i(0,0)
 		# Make the coordinate queue and sort it by distance to center
 		var center = Vector2i(0,0)
-		for x in size.x: 
-			for y in size.y: 
+		for x in size: 
+			for y in size: 
 				coords_queue.append(Vector2i(x, y))
 				center += coords_queue[-1]
 		center /= coords_queue.size()
 		coords_queue.sort_custom(func(v1:Vector2i, v2:Vector2i): return v1.distance_to(center)<v2.distance_to(center))
-		
-		return _get_tile_batch(coords_queue, pos, out_image, level, callback, update_count)
+		return _get_tile_batch(coords_queue, pos, out_image, offset, level, callback, update_count)
 	func get_circle_zone(center: Vector2i, radius: int, level: int, callback: Callable = func(_img: Image): pass, update_count: int = 15) -> Image:
+		radius += 1 # To have some spare room on the edges when offseting to real gps coords
 		assert(_http_workers.get_busy_worker_count() == 0, "No worker should be busy when starting get_square_zone")
-		var out_image = Image.create_empty(radius*2*self._get_size(), radius*2*self._get_size(), false, Image.FORMAT_RGB8)
+		var out_image = Image.create_empty(radius*2*self._get_size()-self._get_size(), radius*2*self._get_size()-self._get_size(), false, Image.FORMAT_RGB8)
 		var coords_queue: Array[Vector2i] = []
-
+		var offset = Vector2i(self._get_size(),self._get_size())
 		# Make the coordinate queue and sort it by distance to center
 		var sort_center = Vector2i(radius, radius)
 		for x in radius*2: 
@@ -205,8 +207,7 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 				if ((x-radius)**2+(y-radius)**2 < radius**2):
 					coords_queue.append(Vector2i(x, y))
 		coords_queue.sort_custom(func(v1:Vector2i, v2:Vector2i): return v1.distance_to(sort_center)<v2.distance_to(sort_center))
-		
-		return _get_tile_batch(coords_queue, center-sort_center, out_image, level, callback, update_count)
+		return _get_tile_batch(coords_queue, center-sort_center, out_image, offset, level, callback, update_count)
 	#endregion
 
 #region TILE API IMPLEMENTATIONS

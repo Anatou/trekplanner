@@ -19,6 +19,7 @@ var walk_vel: Vector3 # Walking velocity
 
 @onready var camera: Camera3D = $PlayerCamera
 @onready var hand: Node3D = $PlayerHand
+@onready var map: Map = $"../Map"
 
 func _ready() -> void:
 	capture_mouse()
@@ -51,6 +52,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	if Input.is_action_just_pressed(&"exit"): 
 		if mouse_captured: release_mouse()
 		else: get_tree().quit()
+	if Input.is_action_just_pressed(&"map"):        map.move_to_gps(45.1140770, 6.5637753)
+	if Input.is_action_just_pressed(&"next_map"):   map.next_layer()
+	if Input.is_action_just_pressed(&"prev_map"):   map.prev_layer()
+	if Input.is_action_just_pressed(&"map_left"):   map.move_relative_to_gps(0, -0.001)
+	if Input.is_action_just_pressed(&"map_right"):  map.move_relative_to_gps(0, 0.001)
+	if Input.is_action_just_pressed(&"map_top"):    map.move_relative_to_gps(0.001, 0)
+	if Input.is_action_just_pressed(&"map_bottom"): map.move_relative_to_gps(-0.001, 0)
+	if Input.is_action_just_pressed(&"zoom_map_tiles"):   map.zoom_map(2)
+	if Input.is_action_just_pressed(&"dezoom_map_tiles"): map.zoom_map(0.5)
+	if Input.is_action_just_pressed(&"zoom_map_plane"):   map.scale_plane(2)
+	if Input.is_action_just_pressed(&"dezoom_map_plane"): map.scale_plane(0.5)
+	if Input.is_action_just_pressed(&"clear_cache"): map.clear_layer_cache(map.get_current_layer())
+	if Input.is_action_just_pressed(&"cache_info"):  print(map.get_layer_cache_size(map.get_current_layer()))
 
 func _physics_process(delta: float) -> void:
 	var velocity = _walk(delta)

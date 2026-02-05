@@ -1,9 +1,10 @@
 {
     "files.exclude": {
-        "**/.git": true,
-        "**/.svn": true,
-        "**/.hg": true,
-        "**/**.gd.uid": true,
-        "**/.vscode": true
-    }
+		"**/.git": true,
+		"**/.svn": true,
+		"**/.hg": true,
+		"**/**.gd.uid": true,
+		"**/**.gdshader.uid": true,
+		"**/.vscode": true
+	}
 }

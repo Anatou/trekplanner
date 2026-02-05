@@ -1,3 +1,5 @@
+@icon("res://addons/plenticons/icons/svg/2d/die-1-red.svg")
+class_name CustomPlane
 extends MeshInstance3D
 
 var map_mesh = ArrayMesh.new()
@@ -5,7 +7,6 @@ var surface_array: Array
 
 func _normalize(value: float, minimum: float, maximum: float) -> float:
 	return (value-minimum)/(maximum-minimum)
-
 func _distance_squared(v1: Vector3, v2: Vector3) -> float:
 	return v1.distance_squared_to(v2)
 
@@ -28,7 +29,6 @@ func _push_pair_to_set(s: Set, v1: int, v2: int) -> void:
 func _is_pair_in_set(s: Set, v1: int, v2: int) -> bool:
 	if v1<v2: return s.has([v1,v2])
 	else: return s.has([v2,v1])
-
 func _arrange_points_clockwise(verts: PackedVector3Array, points: Array[int]) -> Array[int]:
 	var pt1: Vector3 = verts[points[0]]
 	var pt2: Vector3 = verts[points[1]]
@@ -36,13 +36,11 @@ func _arrange_points_clockwise(verts: PackedVector3Array, points: Array[int]) ->
 	if (pt2-pt1).cross(pt3-pt1).y < 0:
 		return [points[0], points[1], points[2]]
 	return [points[0], points[2], points[1]]
-
 func _add_neighbor_to_point(d: Dictionary, pt1: int, pt2: int) -> void:
 	if not d.has(pt1): d.set(pt1, [])
 	if not d.has(pt2): d.set(pt2, [])
 	d[pt1].append(pt2)
 	d[pt2].append(pt1)
-
 func _get_angle_with_center(v: Vector3) -> float:
 	var angle = v.angle_to(Vector3(1, 0, 0))
 	var s = -1 if v.angle_to(Vector3(0, 0, 1)) > PI/2.0 else 1
@@ -208,24 +206,24 @@ func _make_dense_disk_mesh(n: int, radius: float) -> Array:
 	surface[Mesh.ARRAY_NORMAL] = normals
 	surface[Mesh.ARRAY_INDEX] = indices
 	return surface
-
 func _ready() -> void:
 	self.mesh = map_mesh
-	var material = StandardMaterial3D.new() 
-	surface_array = _make_dense_disk_mesh(1024*6, 2)
+	_draw_gizmo_point(Vector3(0,0,0))
 
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface_array)
-	material.albedo_texture = ResourceLoader.load("res://addons/kenney_prototype_textures/purple/texture_04.png")
-	self.material_override = material
-
-func _process(_delta: float) -> void:
-	var n = surface_array[Mesh.ARRAY_VERTEX].size()
-	var height = 0.2
-	# var speed = 0.0
-	var speed = 0.001
-	var wavelength = 4
-	for i in n:
-		var d = surface_array[Mesh.ARRAY_VERTEX][i].distance_squared_to(Vector3(0,0,0))
-		surface_array[Mesh.ARRAY_VERTEX][i].y = sin(Time.get_ticks_msec()*speed + d*wavelength)*(height/2)
+func generate_disk_mesh(n: int, radius: float) -> void:
+	surface_array = _make_dense_disk_mesh(n, radius)
 	mesh.clear_surfaces()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface_array)
+
+func _process(_delta: float) -> void:
+	pass
+	# var n = surface_array[Mesh.ARRAY_VERTEX].size()
+	# var height = 0.2
+	# # var speed = 0.0
+	# var speed = 0.001
+	# var wavelength = 2
+	# for i in n:
+	# 	var d = surface_array[Mesh.ARRAY_VERTEX][i].distance_squared_to(Vector3(0,0,0))
+	# 	surface_array[Mesh.ARRAY_VERTEX][i].y = sin(Time.get_ticks_msec()*speed + d*wavelength)*(height/2)
+	# mesh.clear_surfaces()
+	# mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface_array)
