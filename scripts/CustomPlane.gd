@@ -211,7 +211,9 @@ func _ready() -> void:
 	_draw_gizmo_point(Vector3(0,0,0))
 
 func generate_disk_mesh(n: int, radius: float) -> void:
-	surface_array = _make_dense_disk_mesh(n, radius)
+	# using making the unit disk and then scaling it up using the Node's scale property for a more stable use of scale later
+	surface_array = _make_dense_disk_mesh(n, 1.0)
+	scale = Vector3(radius, radius, radius)
 	mesh.clear_surfaces()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface_array)
 

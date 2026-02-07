@@ -5,14 +5,15 @@ var thread: Thread
 var loading_symbol: MeshInstance3D
 var map_plane: CustomPlane
 var tiles_api = TilesApi.new(3000)
+var material: ShaderMaterial = ShaderMaterial.new()
 
 var layers_count = tiles_api.layers.size()
 var current_layer = 0
-var material: ShaderMaterial = ShaderMaterial.new()
 
 var level = 16
+var last_texture_gps: Vector2 = Vector2(0,0)
 var gps: Vector2 = Vector2(0,0)
-var gps_move_step: float = 0.001
+var map_zoom: float = 1.0
 
 var map_plane_radius: float = 2.0
 var map_plane_resolution: int = 2048
@@ -34,10 +35,11 @@ func _process(_delta: float) -> void:
 		var img = thread.wait_to_finish()
 		_update_texture(img)
 		loading_symbol.hide()
-	# Process inputs
-	
-func _update_texture(image: Image) -> void:
-	var coords = tiles_api.gps_to_grid(gps.x, gps.y, level)
+
+func _update_texture_zoom() -> void:
+	material.set_shader_parameter("ZOOM", Vector2(map_zoom, map_zoom))
+func _update_texture_offset() -> void:
+	var coords = tiles_api.gps_to_grid(last_texture_gps.x, last_texture_gps.y, level)
 	var gps_snapped_to_tiles: Vector2 = tiles_api.grid_to_gps(coords.x, coords.y, level)
 	var tile_size_in_gps: Vector2 = tiles_api.grid_to_gps(coords.x+1, coords.y+1, level) - gps_snapped_to_tiles
 	var gps_snapped_tile_center = gps_snapped_to_tiles + tile_size_in_gps/2.0
@@ -48,13 +50,17 @@ func _update_texture(image: Image) -> void:
 	var texture_scale = float(map_tiles_radius*2-1)/float(map_tiles_radius*2+1)
 	material.set_shader_parameter("OFFSET", grid_offset)
 	material.set_shader_parameter("SCALE", Vector2(texture_scale, texture_scale))
+func _update_texture(image: Image) -> void:
+	last_texture_gps = gps
 	material.set_shader_parameter("TEXTURE", ImageTexture.create_from_image(image))
+	_update_texture_offset()
 func _get_map() -> Image:
+	# update the map_tiles_radius depending on zoom <=======================================================================
 	var coords = tiles_api.gps_to_grid(gps.x, gps.y, level)
 	return tiles_api.layers[current_layer].get_circle_zone(Vector2i(coords.x, coords.y), map_tiles_radius, level, _update_texture)
 #endregion
 #region PUBLIC METHODS
-func update_map() -> void:
+func update_map_texture() -> void:
 	# If map is still getting updated
 	if thread != null and thread.is_started() and thread.is_alive():
 		return
@@ -70,17 +76,17 @@ func update_map() -> void:
 	thread.start(f)
 func move_to_gps(lat: float, long: float) -> void:
 	gps = Vector2(lat, long)
-	update_map()
+	_update_texture_offset()
 func move_relative_to_gps(lat: float, long: float) -> void:
 	gps += Vector2(lat, long)
-	update_map()
+	_update_texture_offset()
 func move_meters_relative_to_gps(x: float, y: float) -> void:
 	assert(false, "todo")
 func zoom_map(zoom: float) -> void:
-	assert(false, "todo")
+	map_zoom *= 1.0-zoom
+	_update_texture_zoom()
 func scale_plane(plane_scale: float) -> void:
-	map_plane_radius *= plane_scale
-	map_plane.generate_disk_mesh(map_plane_resolution, map_plane_radius)
+	map_plane.scale *= 1.0-plane_scale
 ## Clears the cached tiles for this layer
 func clear_layer_cache(layer: int) -> void:
 	assert(layer >= 0 and layer < layers_count)
@@ -93,10 +99,8 @@ func get_current_layer() -> int:
 	return current_layer
 func next_layer() -> void:
 	current_layer = (current_layer+1)% layers_count
-	update_map()
 func prev_layer() -> void:
 	current_layer = (current_layer-1)% layers_count
-	update_map()
 func get_layer_count() -> int:
 	return layers_count
 func get_layer_id(layer: int) -> String:
