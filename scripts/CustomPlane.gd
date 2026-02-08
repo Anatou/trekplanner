@@ -10,19 +10,6 @@ func _normalize(value: float, minimum: float, maximum: float) -> float:
 func _distance_squared(v1: Vector3, v2: Vector3) -> float:
 	return v1.distance_squared_to(v2)
 
-func _draw_gizmo_point(pos: Vector3, radius = 0.01, color = null) -> void:
-	var point_obj = MeshInstance3D.new()
-	var point_mesh = SphereMesh.new()
-	var material = StandardMaterial3D.new() 
-	point_mesh.radius = radius
-	point_mesh.height = radius*2
-	point_obj.position = pos
-	point_obj.mesh = point_mesh
-	if color is Color:
-		material.albedo_color = color
-		point_obj.material_override = material
-	self.add_child(point_obj)
-
 func _push_pair_to_set(s: Set, v1: int, v2: int) -> void:
 	if v1<v2: s.push([v1,v2])
 	else: s.push([v2,v1])
@@ -208,7 +195,6 @@ func _make_dense_disk_mesh(n: int, radius: float) -> Array:
 	return surface
 func _ready() -> void:
 	self.mesh = map_mesh
-	_draw_gizmo_point(Vector3(0,0,0))
 
 func generate_disk_mesh(n: int, radius: float) -> void:
 	# using making the unit disk and then scaling it up using the Node's scale property for a more stable use of scale later

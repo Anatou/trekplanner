@@ -12,7 +12,7 @@ func _init(timeout: int = 5000) -> void:
 	]
 
 ## Convert XYZ Web Mercator coordinates to GPS
-func grid_to_gps(x: int, y: int, level: int) -> Vector2:
+func grid_to_gps(x: float, y: float, level: int) -> Vector2:
 	#https://gis.stackexchange.com/questions/461842/generating-my-own-xyz-tiles-how-do-x-y-z-map-to-gps-bounds
 	# Based on the OSM wiki page for "slippy map" tilenames, XYZ tiles use the Web Mercator projection (WGS84/EPSG:3857)
 	var n = 2**level
@@ -21,7 +21,7 @@ func grid_to_gps(x: int, y: int, level: int) -> Vector2:
 	var long = 360*x/(n as float)  - 180
 	return Vector2(lat, long)
 ## Convert GPS coordinates to XYZ Web Mercator
-func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
+func gps_to_grid(lat: float, long: float, level: int) -> Vector2:
 	#https://gis.stackexchange.com/questions/461842/generating-my-own-xyz-tiles-how-do-x-y-z-map-to-gps-bounds
 	# Based on the OSM wiki page for "slippy map" tilenames, XYZ tiles use the Web Mercator projection (WGS84/EPSG:3857)
 	var n = 2**level
@@ -29,7 +29,12 @@ func gps_to_grid(lat: float, long: float, level: int) -> Vector2i:
 	var lts = log(tan(r) + 1/cos(r))
 	var x = n*(0.5+long/360)
 	var y = n*(1-lts/PI) /2
-	return Vector2i(floor(x), floor(y))
+	return Vector2(x,y)
+
+func get_relative_gps_movement_in_coords(gps_pos: Vector2, gps_delta: Vector2, level) -> Vector2:
+	var coords = gps_to_grid(gps_pos.x, gps_pos.y, level)
+	var coords_and_delta = gps_to_grid(gps_pos.x+gps_delta.x, gps_pos.y+gps_delta.y, level)
+	return coords_and_delta - coords
 
 @abstract class TileApi extends Node:
 	var _timeout: int ## Time before request timeout (in ms)
